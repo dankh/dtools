@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+
+##
+# Mysql database management tool. Allows list, empty, dump, import on databases
+# and/or tables in databases. Allows execution of arbitrary SQL code.
+#
+# Type 'd-sql --help' for usage information.
+##
+
+##
+# Initialize parameters.
+##
+
+# Database user. Required.
+DATABASE_USER=""
+
+# Database password. Required.
+DATABASE_PASSWORD=""
+
+# Database server address. Default value is localhost. Required.
+DATABASE_HOST="localhost"
+
+# Database server port. Required. If value is 0, the default port defined in
+# server configuration is used.
+DATABASE_PORT="0"
+
+# Database name.
+DATABASE_NAME=""
+
+# Database table name.
+DATABASE_TABLE=""
+
+# Export/import file.
+DATABASE_FILE=""
+
+# Default config file to search for.
+DATABASE_CONFIG_FILE="dtools.config.sh"
+
+# Script executable, used in help and usage functions.
+_SELF=$(basename $0)
+
+##
+# Start script.
+##
+
+
+# Usage function used to print errors. First parameter is message to print.
+_usage()
+{
+  echo "$_SELF : $1"
+  echo "Try '$_SELF --help' for more information."
+}
+
+# Help
+_help()
+{
+  cat << EOF
+$_SELF [OPTIONS] ACTION [ ACTION_OPTIONS ]
+Examples:
+
+ Actions:
+  create                    Create database.
+  drop                      Drop database or table.
+  dump                      Export database in single file, see mysqldump.
+  empty                     Delete all tables in database.
+  execute                   Execute query on database.
+  import                    Import file in database. Database must exist.
+  list                      List databases. if database name is set, list database tables.
+                            This command uses SQL SHOW.
+
+ Options:
+  -h, --help                Print this message.
+  -c, --config=FILE         Configuration file to read options from. This file
+                            must be valid bash script.
+  -f, --file=FILE           File to read or write data in import or dump actions.
+                            In both cases if file extention is gz, tar or tar.gz the
+                            file will be decompressed or compressed.
+  -d, --database=NAME       Database name
+  -t, --table=TABLE         Database table.
+
+EOF
+}
+
+# Parse command line options
+for _OPTION in "$@"; do
+  case $_OPTION in
+    -c=*|--config=*)
+      DATABASE_CONFIG_FILE="${_OPTION#*=}"
+      shift
+      ;;
+    -d=*|--database=*)
+      DATABASE_NAME="${_OPTION#*=}"
+      shift
+      ;;
+    -f=*|--file=*)
+      DATABASE_FILE="${_OPTION#*=}"
+      _DATABASE_FILE_BASENAME=$(basename "$DATABASE_FILE")
+      _DATABASE_FILE_EXTENTION="${_DATABASE_FILE_BASENAME#*.}"
+      _DATABASE_FILE_NAME="${_DATABASE_FILE_BASENAME%%.*}"
+      shift
+      ;;
+    -h|--help)
+        _help
+        exit 0
+      ;;
+    -t=*|--table=*)
+      DATABASE_TABLE="${_OPTION#*=}"
+      shift
+      ;;
+  esac
+done
+
+# Define required parameters.
+CONFIG_REQUIRED=("DATABASE_USER" "DATABASE_PASSWORD" "DATABASE_HOST" "DATABASE_PORT")
+
+# Parse action, actions can add required parameter.
+case "$1" in
+  create)
+    OPTION_ACTION="create"
+    CONFIG_REQUIRED+=("DATABASE_NAME")
+    ;;
+  drop)
+    OPTION_ACTION="drop"
+    CONFIG_REQUIRED+=("DATABASE_NAME")
+  ;;
+  list)
+    OPTION_ACTION="list"
+    ;;
+  dump)
+    OPTION_ACTION="dump"
+    CONFIG_REQUIRED+=("DATABASE_FILE")
+    CONFIG_REQUIRED+=("DATABASE_NAME")
+    ;;
+  empty)
+    OPTION_ACTION="empty"
+    CONFIG_REQUIRED+=("DATABASE_NAME")
+    ;;
+  import)
+    OPTION_ACTION="import"
+    CONFIG_REQUIRED+=("DATABASE_NAME")
+    CONFIG_REQUIRED+=("DATABASE_FILE")
+    ;;
+  execute)
+    OPTION_ACTION="execute"
+    CONFIG_REQUIRED+=("DATABASE_NAME")
+    ;;
+  *)
+    _usage "Unknown action '$1'"
+    exit 1
+    ;;
+esac
+
+# Shift the positional parameter.
+shift
+
+# Load configuration first.
+if [[ -n "$DATABASE_CONFIG_FILE" ]]; then
+  if [[ -f "$DATABASE_CONFIG_FILE" ]]; then
+    source "$DATABASE_CONFIG_FILE"
+  else
+    echo "Configuration file not found or not readable."
+    exit 1
+  fi
+fi
+
+for _CFG in "${CONFIG_REQUIRED[@]}"; do
+  # Use variable variable, check if it's set
+  if [ -z "${!_CFG}" ]; then
+    _usage "$_CFG parameter is required."
+    exit 1
+  fi
+done
+
+# Setup connection options.
+_DATABASE_CONNECTION="--user=$DATABASE_USER --password=$DATABASE_PASSWORD --host=$DATABASE_HOST --port=$DATABASE_PORT"
+
+##
+# Execute action
+# #
+case "$OPTION_ACTION" in
+  create)
+    mysql $_DATABASE_CONNECTION -Bse "CREATE DATABASE $DATABASE_NAME"
+    ;;
+  drop)
+    if [[ "$DATABASE_TABLE" == "" ]]; then
+      mysql $_DATABASE_CONNECTION -Bse "DROP DATABASE $DATABASE_NAME"
+    else
+      mysql $_DATABASE_CONNECTION -Bse "USE $DATABASE_NAME; SET FOREIGN_KEY_CHECKS = 0; DROP TABLE $DATABASE_TABLE"
+    fi
+  ;;
+  empty)
+    if [[ "$DATABASE_TABLE" == "" ]]; then
+      _DROP_SQL=$(mysqldump --no-data --add-drop-table $_DATABASE_CONNECTION "$DATABASE_NAME" | grep ^DROP)
+      mysql $_DATABASE_CONNECTION -Bse "USE $DATABASE_NAME; SET FOREIGN_KEY_CHECKS = 0; $_DROP_SQL"
+    else
+      mysql $_DATABASE_CONNECTION -Bse "USE $DATABASE_NAME; SET FOREIGN_KEY_CHECKS = 0; TRUNCATE $DATABASE_TABLE"
+    fi
+    ;;
+  execute)
+    mysql $_DATABASE_CONNECTION -Bse "$*"
+    ;;
+  dump)
+    _DATABASE_DUMP_OPTIONS="--compact --skip-extended-insert --single-transaction"
+    _DATABASE_FILE_SQL="$_DATABASE_FILE_NAME.sql"
+
+    if [[ "$DATABASE_TABLE" == "" ]]; then
+      mysqldump $_DATABASE_DUMP_OPTIONS $_DATABASE_CONNECTION "$DATABASE_NAME" > "$_DATABASE_FILE_SQL"
+    else
+      mysqldump $_DATABASE_DUMP_OPTIONS $_DATABASE_CONNECTION "$DATABASE_NAME" "$DATABASE_TABLE" > "$_DATABASE_FILE_SQL"
+    fi
+
+    # Create archive
+    case "$_DATABASE_FILE_EXTENTION" in
+      gz)
+        gzip "$DATABASE_FILE" "$_DATABASE_FILE_SQL"
+        rm "$_DATABASE_FILE_SQL"
+        ;;
+      tar)
+        tar cvf "$DATABASE_FILE" "$_DATABASE_FILE_SQL"
+        rm "$_DATABASE_FILE_SQL"
+        ;;
+      tar.gz)
+        tar czvf "$DATABASE_FILE" "$_DATABASE_FILE_SQL"
+        rm "$_DATABASE_FILE_SQL"
+        ;;
+      *)
+        mv "$_DATABASE_FILE_SQL" "$DATABASE_FILE"
+    esac
+    ;;
+  import)
+    case "$_DATABASE_FILE_EXTENTION" in
+      gz)
+        gunzip < "$DATABASE_FILE" | mysql $_DATABASE_CONNECTION "$DATABASE_NAME"
+        ;;
+      tar)
+        tar -xOf "$DATABASE_FILE" | mysql $_DATABASE_CONNECTION "$DATABASE_NAME"
+        ;;
+      tar.gz)
+        tar -xzOf "$DATABASE_FILE" | mysql $_DATABASE_CONNECTION "$DATABASE_NAME"
+        ;;
+      *)
+        mysql "$_DATABASE_CONNECTION" "$DATABASE_NAME" < "$DATABASE_FILE"
+        ;;
+    esac
+    ;;
+  list)
+    if [[ "$DATABASE_NAME" == "" ]]; then
+      mysql $_DATABASE_CONNECTION -Bse "SHOW DATABASES;"
+    else
+      mysql $_DATABASE_CONNECTION $DATABASE_NAME -Bse "SHOW TABLES;"
+    fi
+    ;;
+  *)
+    _usage "Unknown action '$1'"
+    exit 1
+    ;;
+esac
