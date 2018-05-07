@@ -223,8 +223,6 @@ case "$OPTION_ACTION" in
         tar czvf "$DATABASE_FILE" "$_DATABASE_FILE_SQL"
         rm "$_DATABASE_FILE_SQL"
         ;;
-      *)
-        mv "$_DATABASE_FILE_SQL" "$DATABASE_FILE"
     esac
     ;;
   import)
