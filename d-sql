@@ -128,7 +128,6 @@ case "$1" in
     ;;
   dump)
     OPTION_ACTION="dump"
-    CONFIG_REQUIRED+=("DATABASE_FILE")
     CONFIG_REQUIRED+=("DATABASE_NAME")
     ;;
   empty)
@@ -200,6 +199,13 @@ case "$OPTION_ACTION" in
     mysql $_DATABASE_CONNECTION -Bse "$*"
     ;;
   dump)
+    if [[ "$DATABASE_FILE" == "" ]]; then
+      DATABASE_FILE="$DATABASE_NAME.tar.gz"
+      _DATABASE_FILE_BASENAME=$(basename "$DATABASE_FILE")
+      _DATABASE_FILE_EXTENTION="${_DATABASE_FILE_BASENAME#*.}"
+      _DATABASE_FILE_NAME="${_DATABASE_FILE_BASENAME%%.*}"
+    fi
+
     _DATABASE_DUMP_OPTIONS="--compact --skip-extended-insert --single-transaction"
     _DATABASE_FILE_SQL="$_DATABASE_FILE_NAME.sql"
 
