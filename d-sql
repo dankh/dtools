@@ -94,9 +94,6 @@ for _OPTION in "$@"; do
       ;;
     -f=*|--file=*)
       DATABASE_FILE="${_OPTION#*=}"
-      _DATABASE_FILE_BASENAME=$(basename "$DATABASE_FILE")
-      _DATABASE_FILE_EXTENTION="${_DATABASE_FILE_BASENAME#*.}"
-      _DATABASE_FILE_NAME="${_DATABASE_FILE_BASENAME%%.*}"
       shift
       ;;
     -h|--help)
@@ -201,13 +198,14 @@ case "$OPTION_ACTION" in
   dump)
     if [[ "$DATABASE_FILE" == "" ]]; then
       DATABASE_FILE="$DATABASE_NAME.tar.gz"
-      _DATABASE_FILE_BASENAME=$(basename "$DATABASE_FILE")
-      _DATABASE_FILE_EXTENTION="${_DATABASE_FILE_BASENAME#*.}"
-      _DATABASE_FILE_NAME="${_DATABASE_FILE_BASENAME%%.*}"
     fi
 
-    _DATABASE_DUMP_OPTIONS="--compact --skip-extended-insert --single-transaction"
+    _DATABASE_FILE_BASENAME=$(basename "$DATABASE_FILE")
+    _DATABASE_FILE_EXTENTION="${_DATABASE_FILE_BASENAME#*.}"
+    _DATABASE_FILE_NAME="${_DATABASE_FILE_BASENAME%%.*}"
     _DATABASE_FILE_SQL="$_DATABASE_FILE_NAME.sql"
+
+    _DATABASE_DUMP_OPTIONS="--compact --skip-extended-insert --single-transaction"
 
     if [[ "$DATABASE_TABLE" == "" ]]; then
       mysqldump $_DATABASE_DUMP_OPTIONS $_DATABASE_CONNECTION "$DATABASE_NAME" > "$_DATABASE_FILE_SQL"
