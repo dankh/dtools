@@ -193,6 +193,31 @@ DAY_OF_WEEK=$(date '+%u')
 DAY_OF_MONTH=$(date '+%d')
 DAY_OF_YEAR=$(date '+%j')
 
+#
+# Setup backup destinations
+#
+
+# Manual backup destination
+BACKUP_DESTINATION_MANUAL="$BACKUP_DESTINATION/manual"
+mkdir -p "$BACKUP_DESTINATION_MANUAL"
+
+# Daily backup destination
+BACKUP_DESTINATION_DAILY="$BACKUP_DESTINATION/daily"
+mkdir -p "$BACKUP_DESTINATION_DAILY"
+
+# Weekly backup destination
+BACKUP_DESTINATION_WEEKLY="$BACKUP_DESTINATION/weekly"
+mkdir -p "$BACKUP_DESTINATION_WEEKLY"
+
+# Monthly backup destination
+BACKUP_DESTINATION_MONTHLY="$BACKUP_DESTINATION/monthly"
+mkdir -p "$BACKUP_DESTINATION_MONTHLY"
+
+# Yearly backup destination
+BACKUP_DESTINATION_YEARLY="$BACKUP_DESTINATION/yearly"
+mkdir -p "$BACKUP_DESTINATION_YEARLY"
+
+# Global backup flag, do backup need to be done on this run ?
 _DO_BACKUP=false
 
 # Manual backup
@@ -202,41 +227,55 @@ if [[ $OPTION_ACTION == "manual" ]]; then
   _DO_BACKUP=true
 fi
 
+# Backup archive filename.
+BACKUP_FILENAME="$(date '+%Y%m%d')-$BACKUP_NAME.tar.gz"
+
 # Daily backup
 _DO_BACKUP_DAILY=false
 for _DAY in $BACKUP_DAILY; do
   if [[ "$_DAY" == "$DAY_OF_WEEK" ]]; then
-    _DO_BACKUP_DAILY=true
-    _DO_BACKUP=true
-    break
+    # Check if backup not already done
+    if [[ ! -f "$BACKUP_DESTINATION_DAILY/$BACKUP_FILENAME" ]]; then
+      _DO_BACKUP_DAILY=true
+      _DO_BACKUP=true
+      break
+    fi
   fi
 done
 
 # Weekly backup
+_DO_BACKUP_WEEKLY=false
 if [[ $BACKUP_WEEKLY -eq 1 && "$BACKUP_WEEKLY_DAY" == "$DAY_OF_WEEK" ]]; then
-  _DO_BACKUP_WEEKLY=true
-  _DO_BACKUP=true
-else
-  _DO_BACKUP_WEEKLY=false
+  # Check if backup not already done
+  if [[ ! -f "$BACKUP_DESTINATION_WEEKLY/$BACKUP_FILENAME" ]]; then
+    _DO_BACKUP_WEEKLY=true
+    _DO_BACKUP=true
+  fi
 fi
 
 # Monthly backup
+_DO_BACKUP_MONTHLY=false
 if [[ $BACKUP_MONTHLY -eq 1 && "$BACKUP_MONTHLY_DAY" == "$DAY_OF_MONTH" ]]; then
-  _DO_BACKUP_MONTHLY=true
-  _DO_BACKUP=true
-else
-  _DO_BACKUP_MONTHLY=false
+  # Check if backup not already done
+  if [[ ! -f "$BACKUP_DESTINATION_MONTHLY/$BACKUP_FILENAME" ]]; then
+    _DO_BACKUP_MONTHLY=true
+    _DO_BACKUP=true
+  fi
 fi
 
 # Yearly backup
+_DO_BACKUP_YEARLY=false
 if [[ $BACKUP_YEARLY -eq 1 && "$BACKUP_YEARLY_DAY" == "$DAY_OF_YEAR" ]]; then
-  _DO_BACKUP_YEARLY=true
-  _DO_BACKUP=true
-else
-  _DO_BACKUP_YEARLY=false
+  # Check if backup not already done
+  if [[ ! -f "$BACKUP_DESTINATION_YEARLY/$BACKUP_FILENAME" ]]; then
+    _DO_BACKUP_YEARLY=true
+    _DO_BACKUP=true
+  fi
 fi
 
-BACKUP_FILENAME="$(date '+%Y%m%d')-$BACKUP_NAME.tar.gz"
+echo $_DO_BACKUP
+
+# Backup archive path
 BACKUP_ARCHIVE="$BACKUP_DESTINATION/$BACKUP_FILENAME"
 
 if [[ $_DO_BACKUP == true ]]; then
@@ -245,21 +284,15 @@ if [[ $_DO_BACKUP == true ]]; then
 fi
 
 if [[ $_DO_BACKUP_MANUAL == true ]]; then
-  # Daily backup destination
-  BACKUP_DESTINATION_MANUAL="$BACKUP_DESTINATION/manual"
-
-  mkdir -p "$BACKUP_DESTINATION_MANUAL"
-  mv "$BACKUP_ARCHIVE" "$BACKUP_DESTINATION_MANUAL"
+  # Backup archive path for manual backups includes the hour and minute, as multiple
+  # backups can be done the same day.
+  mv $BACKUP_ARCHIVE "$BACKUP_DESTINATION_MANUAL/$(date '+%Y%m%d%H%M')-$BACKUP_NAME.tar.gz"
 
   # On manual we don't run scheduled backups so we exit here.
   exit 0
 fi
 
 if [[ $_DO_BACKUP_DAILY == true ]]; then
-  # Daily backup destination
-  BACKUP_DESTINATION_DAILY="$BACKUP_DESTINATION/daily"
-
-  mkdir -p "$BACKUP_DESTINATION_DAILY"
   cp "$BACKUP_ARCHIVE" "$BACKUP_DESTINATION_DAILY"
 
   # Daily backup rotation.
@@ -270,10 +303,6 @@ if [[ $_DO_BACKUP_DAILY == true ]]; then
 fi
 
 if [[ $_DO_BACKUP_WEEKLY == true ]]; then
-  # Weekly backup destination
-  BACKUP_DESTINATION_WEEKLY="$BACKUP_DESTINATION/weekly"
-
-  mkdir -p "$BACKUP_DESTINATION_WEEKLY"
   cp "$BACKUP_ARCHIVE" "$BACKUP_DESTINATION_WEEKLY"
 
   # Weekly backup rotation.
@@ -284,10 +313,6 @@ if [[ $_DO_BACKUP_WEEKLY == true ]]; then
 fi
 
 if [[ $_DO_BACKUP_MONTHLY == true ]]; then
-  # Monthly backup destination
-  BACKUP_DESTINATION_MONTHLY="$BACKUP_DESTINATION/monthly"
-
-  mkdir -p "$BACKUP_DESTINATION_MONTHLY"
   cp "$BACKUP_ARCHIVE" "$BACKUP_DESTINATION_MONTHLY"
 
   # Monthly backup rotation.
@@ -299,10 +324,6 @@ if [[ $_DO_BACKUP_MONTHLY == true ]]; then
 fi
 
 if [[ $_DO_BACKUP_YEARLY == true ]]; then
-  # Yearly backup destination
-  BACKUP_DESTINATION_YEARLY="$BACKUP_DESTINATION/yearly"
-
-  mkdir -p "$BACKUP_DESTINATION_YEARLY"
   cp "$BACKUP_ARCHIVE" "$BACKUP_DESTINATION_YEARLY"
 
   BACKUP_YEARLY_ROTATE_FILENAME="$(date '+%Y%m%d' -d '-'$BACKUP_YEARLY_RETENTION' year')-$BACKUP_NAME.tar.gz"
