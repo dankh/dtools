@@ -273,8 +273,6 @@ if [[ $BACKUP_YEARLY -eq 1 && "$BACKUP_YEARLY_DAY" == "$DAY_OF_YEAR" ]]; then
   fi
 fi
 
-echo $_DO_BACKUP
-
 # Backup archive path
 BACKUP_ARCHIVE="$BACKUP_DESTINATION/$BACKUP_FILENAME"
 
